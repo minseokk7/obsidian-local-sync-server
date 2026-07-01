@@ -1,11 +1,11 @@
 use axum::{
-    extract::ws::{Message, WebSocket, WebSocketUpgrade},
+    extract::{State, ws::{Message, WebSocket, WebSocketUpgrade}},
     routing::{get, post},
     Router, response::IntoResponse, Json,
 };
 use serde::{Deserialize, Serialize};
-use std::{net::SocketAddr, sync::Arc};
-use tokio::sync::{oneshot, Mutex};
+use std::{net::SocketAddr, sync::Arc, path::Path};
+use tokio::{sync::{oneshot, Mutex}, fs};
 use tower_http::cors::{Any, CorsLayer};
 use tauri::{AppHandle, Emitter};
 use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
@@ -34,6 +34,14 @@ impl ServerState {
 pub struct SyncStatus {
     version: u32,
     files: usize,
+}
+
+#[derive(Deserialize)]
+struct SyncMessage {
+    #[serde(rename = "type")]
+    msg_type: String,
+    path: String,
+    content: Option<String>,
 }
 
 pub async fn run_server(port: u16, state: Arc<ServerState>) -> Result<(), String> {
@@ -69,7 +77,8 @@ pub async fn run_server(port: u16, state: Arc<ServerState>) -> Result<(), String
         .route("/api/sync/pull", get(handle_pull))
         .route("/api/sync/push", post(handle_push))
         .route("/ws", get(ws_handler))
-        .layer(cors);
+        .layer(cors)
+        .with_state(state.clone());
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(&addr).await.map_err(|e| e.to_string())?;
@@ -102,18 +111,69 @@ async fn handle_push() -> impl IntoResponse {
     "OK"
 }
 
-async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(handle_socket)
+async fn ws_handler(State(state): State<Arc<ServerState>>, ws: WebSocketUpgrade) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
-async fn handle_socket(mut socket: WebSocket) {
+async fn handle_socket(mut socket: WebSocket, state: Arc<ServerState>) {
+    let sync_dir = Path::new("sync_vault");
+    if !sync_dir.exists() {
+        let _ = fs::create_dir_all(sync_dir).await;
+    }
+
+    state.emit_log("새로운 기기가 실시간 웹소켓에 연결되었습니다!");
+
     while let Some(msg) = socket.recv().await {
         if let Ok(msg) = msg {
             if let Message::Text(text) = msg {
-                println!("Client sent str: {:?}", text);
-                let _ = socket.send(Message::Text(format!("Echo: {}", text).into())).await;
+                if let Ok(sync_msg) = serde_json::from_str::<SyncMessage>(&text) {
+                    let file_path = sync_dir.join(&sync_msg.path);
+                    
+                    if let Some(parent) = file_path.parent() {
+                        let _ = fs::create_dir_all(parent).await;
+                    }
+
+                    match sync_msg.msg_type.as_str() {
+                        "create" | "modify" => {
+                            if let Some(content) = sync_msg.content {
+                                if let Ok(_) = fs::write(&file_path, content).await {
+                                    state.emit_log(&format!("[{}] {}", sync_msg.msg_type.to_uppercase(), sync_msg.path));
+                                    
+                                    // DB 기록
+                                    if let Some(pool) = state.db.lock().await.as_ref() {
+                                        let _ = sqlx::query("INSERT OR REPLACE INTO files (path, hash) VALUES (?, ?)")
+                                            .bind(&sync_msg.path)
+                                            .bind("hash_placeholder") // TODO: 실제 해시
+                                            .execute(pool).await;
+                                    }
+                                } else {
+                                    state.emit_log(&format!("[오류] 파일 저장 실패: {}", sync_msg.path));
+                                }
+                            }
+                        },
+                        "delete" => {
+                            if file_path.exists() {
+                                let _ = fs::remove_file(&file_path).await;
+                                state.emit_log(&format!("[DELETE] {}", sync_msg.path));
+                                
+                                if let Some(pool) = state.db.lock().await.as_ref() {
+                                    let _ = sqlx::query("DELETE FROM files WHERE path = ?")
+                                        .bind(&sync_msg.path)
+                                        .execute(pool).await;
+                                }
+                            }
+                        },
+                        _ => {}
+                    }
+                } else {
+                    // JSON이 아닌 일반 문자열인 경우 (Ping 등)
+                    if text.contains("Ping") {
+                        state.emit_log("클라이언트 수동 동기화(Ping)를 감지했습니다.");
+                    }
+                }
             }
         } else {
+            state.emit_log("기기 연결이 해제되었습니다.");
             break;
         }
     }
