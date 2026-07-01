@@ -5,11 +5,29 @@
     <link rel="icon" href="./favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Tauri + SvelteKit + Typescript App</title>
-    <link href="./app/immutable/entry/start.CpcWujGb.js" rel="modulepreload">
-		<link href="./app/immutable/chunks/WABrNOFG.js" rel="modulepreload">
+    <script>
+      function showError(title, msg) {
+        var div = document.createElement('div');
+        div.style.cssText = 'color:white; background:red; z-index:9999; position:absolute; top:0; left:0; width:100%; height:100%; padding: 20px; font-family: monospace; overflow: auto;';
+        div.innerHTML = '<h2>' + title + '</h2><p>' + msg + '</p>';
+        if (document.body) {
+          document.body.appendChild(div);
+        } else {
+          document.addEventListener('DOMContentLoaded', () => document.body.appendChild(div));
+        }
+      }
+      window.onerror = function(msg, url, line, col, error) {
+        showError('JS Error', msg + '<br/>' + url + ':' + line + '<br/>' + (error ? error.stack : ''));
+      };
+      window.addEventListener('unhandledrejection', function(e) {
+        showError('Unhandled Promise Rejection', String(e.reason));
+      });
+    </script>
+    <link href="./app/immutable/entry/start.D_QZHoHL.js" rel="modulepreload">
+		<link href="./app/immutable/chunks/DwhQ4uZc.js" rel="modulepreload">
 		<link href="./app/immutable/chunks/BQpZ3jiO.js" rel="modulepreload">
 		<link href="./app/immutable/chunks/BDbEee6t.js" rel="modulepreload">
-		<link href="./app/immutable/entry/app.BRxJAUiX.js" rel="modulepreload">
+		<link href="./app/immutable/entry/app.aTKMfrYG.js" rel="modulepreload">
 		<link href="./app/immutable/chunks/0cRWPh1q.js" rel="modulepreload">
 		<link href="./app/immutable/chunks/BBmCunXo.js" rel="modulepreload">
 		<link href="./app/immutable/chunks/D2_59MM9.js" rel="modulepreload">
@@ -24,15 +42,15 @@
     <div style="display: contents">
 			<script>
 				{
-					__sveltekit_2sbcux = {
+					__sveltekit_1sqouc6 = {
 						base: new URL(".", location).pathname.slice(0, -1)
 					};
 
 					const element = document.currentScript.parentElement;
 
 					Promise.all([
-						import("./app/immutable/entry/start.CpcWujGb.js"),
-						import("./app/immutable/entry/app.BRxJAUiX.js")
+						import("./app/immutable/entry/start.D_QZHoHL.js"),
+						import("./app/immutable/entry/app.aTKMfrYG.js")
 					]).then(([kit, app]) => {
 						kit.start(app, element);
 					});
