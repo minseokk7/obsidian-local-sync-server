@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #3b82f6;
+  --color-secondary: #10b981;
+}
+
+body {
+  @apply bg-neutral-900 text-neutral-100 font-sans;
+}
+
+/* Glassmorphism utilities */
+.glass {
+  @apply bg-white/10 backdrop-blur-md border border-white/20 shadow-xl;
+}
+.glass-dark {
+  @apply bg-black/30 backdrop-blur-md border border-white/10 shadow-xl;
+}
